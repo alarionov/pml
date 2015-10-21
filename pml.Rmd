@@ -1,0 +1,120 @@
+---
+title: "Practical Machine Learning"
+author: "Artem Larionov"
+date: "October 21, 2015"
+output: html_document
+---
+Loading libraries
+```{r}
+library(caret)
+library(rpart)
+library(randomForest)
+```
+
+Setting seed
+```{r}
+set.seed(15485867)
+```
+
+Loading training and testing data sets
+```{r}
+training.csv <- url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+testing.csv  <- url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+training     <- read.csv(training.csv, na.strings=c("NA","#DIV/0!",""))
+testing      <- read.csv(testing.csv, na.strings=c("NA","#DIV/0!",""))
+
+dim(training)
+str(training)
+```
+
+First column for both datasets is ID column, so we can remove it
+```{r}
+training <- training[-1]
+testing  <- testing[-1]
+```
+
+As we could see from structure of datasets, they contain a lot of NA values
+Let's remove all columns which contain more then 30% of NA values
+To do that we just need to make a filter using is.na() and colSums() functions
+```{r}
+training <- training[,colSums(is.na(training))/nrow(training) < 0.3]
+dim(training)
+```
+
+Also we can find variables, which almost don't change, using nearZeroVar() function
+If you pass only first parameter, you will get a vector of indecies of columns for nzv, let's remove it from the dataset
+```{r}
+nzv <- nearZeroVar(training)
+training <- training[-c(nzv)]
+dim(training)
+```
+
+Let's check our clean data
+```{r}
+str(training)
+```
+
+Now we can split our clean data into training and cv datasets
+```{r}
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+myTraining <- training[inTrain, ]
+myTesting <- training[-inTrain, ]
+```
+
+Let's try decision tree classification algoritm first and check what we can get from it
+```{r}
+modelTree <- rpart(classe ~ ., data=myTraining, method="class")
+predictionsTree <- predict(modelTree, myTesting, type = "class")
+```
+
+Let's compare our predictions with real data of our cv dataset
+```{r}
+confusionMatrix(predictionsTree, myTesting$classe)
+```
+
+Let's check if we can get any improvements with randomForest algorithm
+```{r}
+modelForest <- randomForest(classe ~. , data=myTraining)
+predictionsForest <- predict(modelForest, myTesting, type = "class")
+confusionMatrix(predictionsForest, myTesting$classe)
+```
+
+Much better!
+
+Now we can use our model to predict classes for our submission
+First we need testing dataset has the same columns, except "classe"
+```{r}
+testing <- testing[names(myTraining[-58])]
+dim(testing)
+```
+
+And classes and levels of variables are the same for our datasets
+To do so we will add one row of training data set on top of testing one,
+then we just need to remove the first row.
+```{r}
+testing <- rbind(myTraining[1, -58] , testing)
+testing <- testing[-1,]
+```
+
+Now we can use our model to get predictions
+```{r}
+predictions <- predict(modelForest, testing, type = "class")
+```
+
+We will use the function from the course to save predictions into files
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictions)
+```
+
+Let's check our files
+```{r}
+dir()
+```
